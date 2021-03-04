@@ -1,7 +1,9 @@
 package main
 
 import (
-	"fmt"
+	"encoding/json"
+	"log"
+	"os"
 
 	"github.com/tenkoh/japanese-webcomic/scraper"
 )
@@ -11,5 +13,10 @@ const ComiWalkerEndpoint = "https://comic-walker.com/"
 
 func main() {
 	CwComics := scraper.ComicWalkerScrape(ComiWalkerEndpoint)
-	fmt.Println(CwComics)
+	f, _ := os.Create("tmp.json")
+	defer f.Close()
+
+	if err := json.NewEncoder(f).Encode(CwComics); err != nil {
+		log.Fatal(err)
+	}
 }

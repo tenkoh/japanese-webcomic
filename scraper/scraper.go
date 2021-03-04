@@ -1,7 +1,6 @@
 package scraper
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -85,7 +84,6 @@ func eachComicWalkerContent(link string) (*Comic, error) {
 	lu := doc.Find("#detailIndex > div > div > div > div > div.dateBox > span.comicIndex-date").Text()
 	lastUpdate := timeInJST("2006/01/02 15:04:05", strings.Split(lu, " ")[0]+" 00:00:00")
 	nu := doc.Find("#detailIndex > div > div > div > div > span").Text()
-	fmt.Println(nu)
 	nextUpdate := timeInJST("2006/01/02 15:04:05", strings.Split(nu, "】")[1]+" 00:00:00")
 
 	c := Comic{
@@ -114,17 +112,20 @@ func ComicWalkerScrape(endpoint string) []*Comic {
 	links := []string{}
 
 	// get content's link
+	// [MUST] When deploy, search range must be i=0 only
 	doc.Find(".tileList.clearfix").Each(func(i int, s *goquery.Selection) {
-		s.Find("li").Each(func(i int, ss *goquery.Selection) {
-			if ss.Find(".icon-latest").Nodes != nil {
-				link, _ := ss.Find("a").Attr("href")
-				links = append(links, link)
-			}
-		})
+		switch i {
+		case 0:
+			s.Find("li").Each(func(i int, ss *goquery.Selection) {
+				if ss.Find(".icon-latest").Nodes != nil {
+					link, _ := ss.Find("a").Attr("href")
+					links = append(links, link)
+				}
+			})
+		}
 	})
 
 	// get each content
-	// [ToDo] use goroutine
 	for _, link := range links {
 		c, err := eachComicWalkerContent(link)
 		if err != nil {
@@ -134,8 +135,4 @@ func ComicWalkerScrape(endpoint string) []*Comic {
 	}
 
 	return comics
-
-	// find new title in the contents
-
-	// if new, get comic information
 }
