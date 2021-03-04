@@ -7,7 +7,7 @@ import (
 )
 
 // ComiWalkerEndpoint : endpoint for comic walker
-const ComiWalkerEndpoint = "https://comic-walker.com/contents/list/?p=1"
+const ComiWalkerEndpoint = "https://comic-walker.com/"
 
 func main() {
 	CwComics := scraper.ComicWalkerScrape(ComiWalkerEndpoint)

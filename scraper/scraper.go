@@ -114,9 +114,13 @@ func ComicWalkerScrape(endpoint string) []*Comic {
 	links := []string{}
 
 	// get content's link
-	doc.Find("#mainContent > div > dl > dd > ul > li").Each(func(i int, s *goquery.Selection) {
-		link, _ := s.Find("a").Attr("href")
-		links = append(links, link)
+	doc.Find(".tileList.clearfix").Each(func(i int, s *goquery.Selection) {
+		s.Find("li").Each(func(i int, ss *goquery.Selection) {
+			if ss.Find(".icon-latest").Nodes != nil {
+				link, _ := ss.Find("a").Attr("href")
+				links = append(links, link)
+			}
+		})
 	})
 
 	// get each content
@@ -127,10 +131,6 @@ func ComicWalkerScrape(endpoint string) []*Comic {
 			continue
 		}
 		comics = append(comics, c)
-	}
-
-	for _, c := range comics {
-		fmt.Println(*c)
 	}
 
 	return comics
