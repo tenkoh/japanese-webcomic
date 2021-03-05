@@ -18,6 +18,7 @@ type Comic struct {
 	Latest       string    `json:"latest"`
 	LastUpdate   time.Time `json:"lastUpdate"`
 	NextUpdate   time.Time `json:"nextUpdate,omitempty"`
+	LatestRecord time.Time `json:"latestRecord"`
 	Author       []string  `json:"author"`
 	Publisher    string    `json:"publisher"`
 	Genre        []string  `json:"genre"`
@@ -44,7 +45,7 @@ func getDoc(endpoint string) (*goquery.Document, error) {
 }
 
 func timeInJST(layout, date string) time.Time {
-	loc, _ := time.LoadLocation("Asia/Tokyo")
+	loc := time.FixedZone("Asia/Tokyo", 9*60*60)
 	var undefinedDate time.Time = time.Date(1990, 1, 1, 0, 0, 0, 0, loc)
 	jst, err := time.ParseInLocation(layout, date, loc)
 	if err != nil {
@@ -94,6 +95,7 @@ func eachComicWalkerContent(link string) (*Comic, error) {
 		Latest:       latest,
 		LastUpdate:   lastUpdate,
 		NextUpdate:   nextUpdate,
+		LatestRecord: time.Now().In(time.FixedZone("Asia/Tokyo", 9*60*60)),
 		Author:       authors,
 		Publisher:    publisher,
 		Genre:        genres,
