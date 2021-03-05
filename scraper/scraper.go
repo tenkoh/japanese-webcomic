@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -54,7 +55,20 @@ func timeInJST(layout, date string) time.Time {
 	return jst
 }
 
-func eachComicWalkerContent(link string) (*Comic, error) {
+func removeDuplicateKeepFirst(s []string) []string {
+	keys := make(map[string]bool)
+	list := []string{}
+
+	for _, entry := range s {
+		if _, value := keys[entry]; !value {
+			keys[entry] = true
+			list = append(list, entry)
+		}
+	}
+	return list
+}
+
+func parseComicWalker(link string) (*Comic, error) {
 	parent := "https://comic-walker.com"
 	doc, err := getDoc(parent + link)
 	if err != nil {
@@ -104,13 +118,45 @@ func eachComicWalkerContent(link string) (*Comic, error) {
 	return &c, nil
 }
 
-// ComicWalkerScrape : special scraper for ComicWalker
-func ComicWalkerScrape(endpoint string) []*Comic {
+// Scraper : contentGetter shall be unique for each web site.
+func Scraper(links []string, contentParser func(string) (*Comic, error)) []*Comic {
+	comics := []*Comic{}
+	comicChan := make(chan *Comic, len(links))
+	var wg sync.WaitGroup
+
+	// get each content
+	for _, link := range links {
+		wg.Add(1)
+		go func(l string) {
+			defer wg.Done()
+			comic, err := contentParser(l)
+			if err != nil {
+				log.Fatalln(l, err)
+				return
+			}
+			comicChan <- comic
+			return
+		}(link)
+	}
+
+	go func() {
+		wg.Wait()
+		close(comicChan)
+	}()
+
+	for c := range comicChan {
+		comics = append(comics, c)
+	}
+
+	return comics
+}
+
+// ComicWalkerScraper : special scraper for ComicWalker
+func ComicWalkerScraper(endpoint string) []*Comic {
 	doc, err := getDoc(endpoint)
 	if err != nil {
 		log.Fatal(err)
 	}
-	comics := []*Comic{}
 	links := []string{}
 
 	// get content's link
@@ -127,14 +173,7 @@ func ComicWalkerScrape(endpoint string) []*Comic {
 		}
 	})
 
-	// get each content
-	for _, link := range links {
-		c, err := eachComicWalkerContent(link)
-		if err != nil {
-			continue
-		}
-		comics = append(comics, c)
-	}
-
+	links = removeDuplicateKeepFirst(links)
+	comics := Scraper(links, parseComicWalker)
 	return comics
 }

@@ -12,7 +12,7 @@ import (
 const ComiWalkerEndpoint = "https://comic-walker.com/"
 
 func main() {
-	CwComics := scraper.ComicWalkerScrape(ComiWalkerEndpoint)
+	CwComics := scraper.ComicWalkerScraper(ComiWalkerEndpoint)
 	f, _ := os.Create("tmp.json")
 	defer f.Close()
 
