@@ -12,31 +12,31 @@ import (
 	"github.com/tenkoh/japanese-webcomic/scraper"
 )
 
-// ComiWalkerEndpoint : endpoint for comic walker
-const ComiWalkerEndpoint = "https://comic-walker.com/"
+const dynamoRegion = "ap-northeast-1"
+const dynamoTableName = "ComicUpdateNotifier"
 
 func main() {
 	// scraping comics
 	doScrape := false
 	var CwComics []*scraper.Comic
 	if doScrape {
-		CwComics = scraper.ComicWalkerScraper(ComiWalkerEndpoint)
+		CwComics = scraper.ComicWalkerScraper()
 
 		// for debug
-		f, _ := os.Create("tmp.json")
+		f, _ := os.Create("../../tmp.json")
 		defer f.Close()
 
 		if err := json.NewEncoder(f).Encode(CwComics); err != nil {
 			log.Fatal(err)
 		}
 	} else {
-		CwComics, _ = scraper.FromJSON("tmp.json")
+		CwComics, _ = scraper.FromJSON("../../tmp.json")
 	}
 
 	// translate scraping data into suitable format of DynamoDB
 	// And put it into interface for dynamo writer
 	var dcomics []*scraper.DynamoComic
-	for _, c := range CwComics[0:2] {
+	for _, c := range CwComics {
 		dcomics = append(dcomics, c.DynamoMarshal()...)
 	}
 	var writer = make([]interface{}, len(dcomics))
@@ -45,8 +45,8 @@ func main() {
 	}
 
 	// connect to DynamoDB
-	db := dynamo.New(session.New(), &aws.Config{Region: aws.String("ap-northeast-1")})
-	table := db.Table("ComicUpdateNotifier")
+	db := dynamo.New(session.New(), &aws.Config{Region: aws.String(dynamoRegion)})
+	table := db.Table(dynamoTableName)
 
 	// write scraping result to DynamoDB
 	database.WriteItems(table, writer)
