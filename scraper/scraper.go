@@ -14,21 +14,118 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-// Comic : common struct of scraping result
+var genreTable = map[string][]string{
+	"COMICフルール":     {"BL", "女性向け"},
+	"FLOS COMIC":    {"女性向け"},
+	"コミックNewtype":   {"男性向け"},
+	"コミックアライブ":      {"男性向け"},
+	"コミックウォーカー":     {"男性向け"},
+	"コミックジーン":       {"少女向け"},
+	"コミックブリッジ":      {"女性向け"},
+	"コンプエース":        {"男性向け", "美少女"},
+	"コンプティーク":       {"男性向け", "美少女"},
+	"シルフ":           {"女性向け"},
+	"ドラゴンエイジ":       {"少年向け"},
+	"少年エース":         {"少年向け"},
+	"月刊ブシロード":       {"少年向け"},
+	"電撃だいおうじ":       {"4コマ"},
+	"電撃マオウ":         {"男性向け", "美少女"},
+	"電撃大王":          {"少年向け", "美少女"},
+	"魔法のiらんどCOMICS": {"女性向け"},
+}
+
+// Comic : Medium format of scraping result, which is easy to understand for programmer
 type Comic struct {
-	Site          string    `json:"site"`
-	Title         string    `json:"title"`
-	CID           string    `json:"cid"`
-	Introduction  string    `json:"introduction"`
-	Link          string    `json:"link"`
-	Latest        string    `json:"latest"`
-	LastUpdate    time.Time `json:"lastUpdate"`
-	NextUpdate    time.Time `json:"nextUpdate,omitempty" dynamo:",omitempty"`
-	LatestRecord  time.Time `json:"latestRecord"`
-	SortTimeStamp string    `json:"sortTimeStamp"` //LastUpdate#LatestRecord yyyy-mm-dd#yyyy-mm-ddTHH:MM:SS
-	Author        []string  `json:"author" dynamo:",set"`
-	Publisher     string    `json:"publisher"`
-	Genre         []string  `json:"genre" dynamo:",set"`
+	Site         string   `json:"site"` //just used to generate CID (hash of site + title)
+	Title        string   `json:"title"`
+	CID          string   `json:"cid"`
+	Introduction string   `json:"introduction"`
+	Link         string   `json:"link"`
+	Latest       string   `json:"latest"` //ex: story1-1
+	LastUpdate   string   `json:"lastUpdate"`
+	NextUpdate   string   `json:"nextUpdate,omitempty"`
+	LatestRecord string   `json:"latestRecord"`
+	Authors      []string `json:"author"`
+	Publisher    string   `json:"publisher"`
+	Genres       []string `json:"genre"`
+}
+
+// DynamoComic : Final format of scraping result, which is suitable for Querying on DynamoDB
+type DynamoComic struct {
+	CID        string
+	DataType   string
+	DataValue  string
+	Publisher  string `dynamo:",omitempty"`
+	Title      string `dynamo:",omitempty"`
+	Link       string `dynamo:",omitempty"`
+	Latest     string `dynamo:",omitempty"`
+	LastUpdate string `dynamo:",omitempty"`
+	NextUpdate string `dynamo:",omitempty"`
+}
+
+// DynamoMarshal : convert Comic to DynamoComic struct
+func (c *Comic) DynamoMarshal() []*DynamoComic {
+	dcomics := []*DynamoComic{}
+
+	// Required for detail of each content
+	// Required for user fav page
+	// Required for TopPage
+	dcomics = append(dcomics, &DynamoComic{
+		CID:       c.CID,
+		DataType:  "content#fav#mainlist",
+		DataValue: fmt.Sprintf("%s %s %s", c.LastUpdate, c.LatestRecord, c.NextUpdate),
+		Publisher: c.Publisher,
+		Title:     c.Title,
+		Link:      c.Link,
+		Latest:    c.Latest,
+	})
+
+	// Required for detail of each content
+	dcomics = append(dcomics, &DynamoComic{
+		CID:       c.CID,
+		DataType:  "content#intro",
+		DataValue: c.Introduction,
+	})
+
+	// Required for detail of each content
+	// Required for search by author
+	if len(c.Authors) > 0 {
+		ath := []*DynamoComic{}
+		for _, a := range c.Authors {
+			ath = append(ath, &DynamoComic{
+				CID:       c.CID,
+				DataType:  fmt.Sprintf("content#ath_%s", a),
+				DataValue: a,
+				Title:     c.Title,
+			})
+		}
+		dcomics = append(dcomics, ath...)
+	}
+
+	// Required for detail of each content
+	// Required for search by genre
+	if len(c.Genres) > 0 {
+		gen := []*DynamoComic{}
+		for _, g := range c.Genres {
+			gen = append(gen, &DynamoComic{
+				CID:       c.CID,
+				DataType:  fmt.Sprintf("content#gen_%s", g),
+				DataValue: g,
+				Title:     c.Title,
+			})
+		}
+		dcomics = append(dcomics, gen...)
+	}
+
+	// Just required for search by publisher
+	dcomics = append(dcomics, &DynamoComic{
+		CID:       c.CID,
+		DataType:  "publisher",
+		DataValue: c.Publisher,
+		Title:     c.Title,
+	})
+
+	return dcomics
 }
 
 func idGenerator(s string) string {
@@ -36,15 +133,9 @@ func idGenerator(s string) string {
 	return fmt.Sprintf("%x", md5)
 }
 
-func sortTimeStampGenerator(t1, t2 time.Time) string {
-	layout1 := "2006-01-02"
-	layout2 := "2006-01-02T15:04:05"
-	return fmt.Sprintf("%s#%s", t1.Format(layout1), t2.Format(layout2))
-}
-
-func getDoc(endpoint string) (*goquery.Document, error) {
+func getDoc(url string) (*goquery.Document, error) {
 	// Search main content
-	res, err := http.Get(endpoint)
+	res, err := http.Get(url)
 	if err != nil {
 		log.Fatal(err)
 		return nil, err
@@ -62,14 +153,14 @@ func getDoc(endpoint string) (*goquery.Document, error) {
 	return doc, nil
 }
 
-func timeInJST(layout, date string) time.Time {
+func timeInJST(inputLayout, outputLayout, date string) string {
 	loc := time.FixedZone("Asia/Tokyo", 9*60*60)
-	var undefinedDate time.Time = time.Date(1990, 1, 1, 0, 0, 0, 0, loc)
-	jst, err := time.ParseInLocation(layout, date, loc)
+	var undefinedDate string = time.Date(1990, 1, 1, 0, 0, 0, 0, loc).Format(outputLayout)
+	jst, err := time.ParseInLocation(inputLayout, date, loc)
 	if err != nil {
 		return undefinedDate
 	}
-	return jst
+	return jst.Format(outputLayout)
 }
 
 func removeDuplicateKeepFirst(s []string) []string {
@@ -114,25 +205,24 @@ func parseComicWalker(link string) (*Comic, error) {
 	})
 	latest := doc.Find("#detailIndex > div > div > div > div > div.titleBox > p.comicIndex-title").Text()
 	lu := doc.Find("#detailIndex > div > div > div > div > div.dateBox > span.comicIndex-date").Text()
-	lastUpdate := timeInJST("2006/01/02 15:04:05", strings.Split(lu, " ")[0]+" 00:00:00")
+	lastUpdate := timeInJST("2006/01/02 15:04:05", "2006-01-02", strings.Split(lu, " ")[0]+" 00:00:00")
 	nu := doc.Find("#detailIndex > div > div > div > div > span").Text()
-	nextUpdate := timeInJST("2006/01/02 15:04:05", strings.Split(nu, "】")[1]+" 00:00:00")
-	latestRecord := time.Now().In(time.FixedZone("Asia/Tokyo", 9*60*60))
+	nextUpdate := timeInJST("2006/01/02 15:04:05", "2006-01-02", strings.Split(nu, "】")[1]+" 00:00:00")
+	latestRecord := time.Now().In(time.FixedZone("Asia/Tokyo", 9*60*60)).Format("2006-01-02 15:04:05")
 
 	c := Comic{
-		Site:          "ComicWalker",
-		Title:         title,
-		CID:           idGenerator("ComicWalker" + title),
-		Introduction:  introduction,
-		Link:          parent + link,
-		Latest:        latest,
-		LastUpdate:    lastUpdate,
-		NextUpdate:    nextUpdate,
-		LatestRecord:  latestRecord,
-		SortTimeStamp: sortTimeStampGenerator(lastUpdate, latestRecord),
-		Author:        authors,
-		Publisher:     publisher,
-		Genre:         genres,
+		Site:         "ComicWalker",
+		Title:        title,
+		CID:          idGenerator("ComicWalker" + title),
+		Introduction: introduction,
+		Link:         parent + link,
+		Latest:       latest,
+		LastUpdate:   lastUpdate,
+		NextUpdate:   nextUpdate,
+		LatestRecord: latestRecord,
+		Authors:      authors,
+		Publisher:    publisher,
+		Genres:       genres,
 	}
 
 	return &c, nil
@@ -171,6 +261,27 @@ func Scraper(links []string, contentParser func(string) (*Comic, error)) []*Comi
 	return comics
 }
 
+// SequentialScraper : Scraper for a site with crawl-delay limit
+func SequentialScraper(links []string, contentParser func(string) (*Comic, error), waitSec int) []*Comic {
+	comics := []*Comic{}
+
+	for i, link := range links {
+		if i != 0 {
+			// sec -> nano sec
+			time.Sleep(time.Duration(waitSec * 1000000000))
+		}
+		comic, err := contentParser(link)
+		if err != nil {
+			log.Fatalln(link, err)
+			continue
+		}
+		fmt.Println(link)
+		comics = append(comics, comic)
+	}
+
+	return comics
+}
+
 // ComicWalkerScraper : special scraper for ComicWalker
 func ComicWalkerScraper(endpoint string) []*Comic {
 	doc, err := getDoc(endpoint)
@@ -194,7 +305,7 @@ func ComicWalkerScraper(endpoint string) []*Comic {
 	})
 
 	links = removeDuplicateKeepFirst(links)
-	comics := Scraper(links, parseComicWalker)
+	comics := SequentialScraper(links, parseComicWalker, 10)
 	return comics
 }
 
