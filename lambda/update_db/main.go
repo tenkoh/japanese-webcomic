@@ -1,10 +1,7 @@
 package main
 
 import (
-	"encoding/json"
-	"log"
-	"os"
-
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/guregu/dynamo"
@@ -15,23 +12,10 @@ import (
 const dynamoRegion = "ap-northeast-1"
 const dynamoTableName = "ComicUpdateNotifier"
 
-func main() {
+// HandleLambdaEvent : main function
+func HandleLambdaEvent() error {
 	// scraping comics
-	doScrape := false
-	var CwComics []*scraper.Comic
-	if doScrape {
-		CwComics = scraper.ComicWalkerScraper()
-
-		// for debug
-		f, _ := os.Create("../../tmp.json")
-		defer f.Close()
-
-		if err := json.NewEncoder(f).Encode(CwComics); err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		CwComics, _ = scraper.FromJSON("../../tmp.json")
-	}
+	CwComics := scraper.ComicWalkerScraper()
 
 	// translate scraping data into suitable format of DynamoDB
 	// And put it into interface for dynamo writer
@@ -49,24 +33,12 @@ func main() {
 	table := db.Table(dynamoTableName)
 
 	// write scraping result to DynamoDB
-	database.WriteItems(table, writer)
+	if err := database.WriteItems(table, writer); err != nil {
+		return err
+	}
+	return nil
+}
 
-	// var filtered []trans.DynamoComic
-	// // err := table.Get("CID", "1fea47e3674751242efe7d7e5ae2cab8").Range("DataType", dynamo.BeginsWith, "content#list").All(&filtered)
-	// // if err != nil {
-	// // 	log.Fatal(err)
-	// // 	return
-	// // }
-	// // for _, c := range filtered {
-	// // 	fmt.Printf("%+v\n", c)
-	// // }
-
-	// // if search with "contains" is required, use the expression below.
-	// // For example: search title = .*アンゴルモア.* could be written as below.
-	// err := table.Get("DataType", "content#fav#mainlist").Index("DataType-DataValue-index").Filter("contains($,?)", "Title", "アンゴルモア").Order(dynamo.Descending).All(&filtered)
-	// if err != nil {
-	// 	log.Fatalln(err)
-	// }
-
-	// fmt.Println(filtered)
+func main() {
+	lambda.Start(HandleLambdaEvent)
 }
