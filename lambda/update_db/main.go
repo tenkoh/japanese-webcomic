@@ -2,15 +2,9 @@ package main
 
 import (
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/guregu/dynamo"
 	"github.com/tenkoh/japanese-webcomic/database"
 	"github.com/tenkoh/japanese-webcomic/scraper"
 )
-
-const dynamoRegion = "ap-northeast-1"
-const dynamoTableName = "ComicUpdateNotifier"
 
 // HandleLambdaEvent : main function
 func HandleLambdaEvent() error {
@@ -28,12 +22,8 @@ func HandleLambdaEvent() error {
 		writer[i] = v
 	}
 
-	// connect to DynamoDB
-	db := dynamo.New(session.New(), &aws.Config{Region: aws.String(dynamoRegion)})
-	table := db.Table(dynamoTableName)
-
 	// write scraping result to DynamoDB
-	if err := database.WriteItems(table, writer); err != nil {
+	if err := database.WriteItems(writer); err != nil {
 		return err
 	}
 	return nil

@@ -5,15 +5,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/guregu/dynamo"
 	"github.com/tenkoh/japanese-webcomic/database"
 	"github.com/tenkoh/japanese-webcomic/scraper"
 )
-
-const dynamoRegion = "ap-northeast-1"
-const dynamoTableName = "ComicUpdateNotifier"
 
 func main() {
 	// scraping comics
@@ -44,12 +38,8 @@ func main() {
 		writer[i] = v
 	}
 
-	// connect to DynamoDB
-	db := dynamo.New(session.New(), &aws.Config{Region: aws.String(dynamoRegion)})
-	table := db.Table(dynamoTableName)
-
 	// write scraping result to DynamoDB
-	database.WriteItems(table, writer)
+	database.WriteItems(writer)
 
 	// var filtered []trans.DynamoComic
 	// // err := table.Get("CID", "1fea47e3674751242efe7d7e5ae2cab8").Range("DataType", dynamo.BeginsWith, "content#list").All(&filtered)

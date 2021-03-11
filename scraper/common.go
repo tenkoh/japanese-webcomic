@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/tenkoh/japanese-webcomic/localtime"
 )
 
 var genreTable = map[string][]string{
@@ -153,9 +154,8 @@ func getDoc(url string) (*goquery.Document, error) {
 }
 
 func timeInJST(inputLayout, outputLayout, date string) string {
-	loc := time.FixedZone("Asia/Tokyo", 9*60*60)
-	var undefinedDate string = time.Date(1990, 1, 1, 0, 0, 0, 0, loc).Format(outputLayout)
-	jst, err := time.ParseInLocation(inputLayout, date, loc)
+	var undefinedDate string = localtime.Date(1990, 1, 1, 0, 0, 0).Format(outputLayout)
+	jst, err := localtime.Parse(date, inputLayout)
 	if err != nil {
 		return undefinedDate
 	}

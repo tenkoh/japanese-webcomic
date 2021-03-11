@@ -3,7 +3,17 @@ package database
 import (
 	"log"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/guregu/dynamo"
+)
+
+const dynamoRegion = "ap-northeast-1"
+const dynamoTableName = "ComicUpdateNotifier"
+
+var (
+	db    = dynamo.New(session.New(), &aws.Config{Region: aws.String(dynamoRegion)})
+	table = db.Table(dynamoTableName)
 )
 
 // WriteError : Error in putting itemes to DynamoDB
@@ -33,7 +43,7 @@ func (e *WriteError) Error() string {
 // }
 
 // WriteItems : Batch writer to DynamoDB
-func WriteItems(table dynamo.Table, items []interface{}) error {
+func WriteItems(items []interface{}) error {
 	var wcc dynamo.ConsumedCapacity
 	wrote, err := table.Batch().Write().Put(items...).ConsumedCapacity(&wcc).Run()
 	if wrote != len(items) {
@@ -49,4 +59,10 @@ func WriteItems(table dynamo.Table, items []interface{}) error {
 		return &WriteError{}
 	}
 	return nil
+}
+
+// QueryDateWithLimit : Descending order list with range
+// ex) If you want to get 2021-03-10, begin = 2020-03-10, end = 2020-03-11 (+1Day)
+func QueryDateWithLimit(begin, end string, limit int64) *dynamo.Query {
+	return table.Get("DataType", "content#fav#mainlist").Range("DataValue", dynamo.Between, begin, end).Index("DataType-DataValue-index").Order(dynamo.Descending).Limit(limit)
 }
